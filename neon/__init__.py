@@ -16,6 +16,8 @@
 # You should have received a copy of the GNU General Public License
 # along with Neon. If not, see <https://www.gnu.org/licenses/>.
 
+__all__ = ["ComponentMenu", "button", "button_group", "select_menu", "option", "on_timeout"]
+
 from neon.neon import *
 
 __version__ = "0.1.0"
