@@ -1,3 +1,5 @@
+.. _getting-started:
+
 ===============
 Getting Started
 ===============
@@ -76,4 +78,4 @@ You can also create your own custom timeout function in your ``Menu`` class.
 
     @neon.on_timeout(disable_components=True)
     async def on_timeout(self) -> None:
-        await self.edit_msg("⏰ Timed out!")
+        await self.edit_msg("\N{ALARM CLOCK} Timed out!")
