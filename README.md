@@ -36,7 +36,7 @@ class Menu(neon.ComponentMenu):
     async def on_timeout(self) -> None:
         await self.edit_msg("\N{ALARM CLOCK} Timed out!")
 
-@plugin.command
+@bot.command
 @lightbulb.command("neon", "Check out Neon's component builder!")
 @lightbulb.implements(lightbulb.SlashCommand, lightbulb.PrefixCommand)
 async def neon_command(ctx: lightbulb.Context) -> None:
