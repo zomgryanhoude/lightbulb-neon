@@ -16,6 +16,8 @@
 # You should have received a copy of the GNU General Public License
 # along with Neon. If not, see <https://www.gnu.org/licenses/>.
 
+__all__ = ["ComponentMenu", "Button", "SelectMenuOption", "SelectMenu", "ButtonGroup", "TimeoutFunc", "button", "button_group", "select_menu", "option", "on_timeout"]
+
 import asyncio
 import dataclasses
 import inspect
@@ -80,7 +82,7 @@ class ComponentMenu:
     Base class for making a ``ComponentMenu``.
 
     Args:
-        context: The ``lightbulb.Context`` to use.
+        context: The :obj:`lightbulb.Context` to use.
         timeout: The timeout length in seconds.
         author_only: Whether or not the menu can only be used by the user who ran the command.
 
@@ -117,10 +119,12 @@ class ComponentMenu:
                 msg = await ctx.respond("Bar", components=menu.build())
                 await menu.run(msg)
     """
+    __slots__ = ("context", "timeout_length", "author_only", "buttons", "button_groups", "select_menus", "timeout_func", "msg", "inter")
+
     def __init__(
         self, context: lightbulb.Context, timeout: float = 60, author_only: bool = True
     ) -> None:
-        self.ctx = context
+        self.context = context
         self.timeout_length = timeout
         self.author_only = author_only
 
@@ -187,7 +191,7 @@ class ComponentMenu:
         while True:
             try:
                 assert self.msg is not None
-                event = await self.ctx.bot.wait_for(
+                event = await self.context.bot.wait_for(
                     hikari.InteractionCreateEvent,
                     timeout=self.timeout_length,
                     predicate=lambda e: isinstance(
@@ -201,7 +205,7 @@ class ComponentMenu:
             else:
                 self.inter = event.interaction
 
-                if self.author_only and self.inter.user.id != self.ctx.user.id:
+                if self.author_only and self.inter.user.id != self.context.user.id:
                     return
 
                 cid = self.inter.custom_id
@@ -241,7 +245,7 @@ class ComponentMenu:
         rows = []
 
         if len(self.buttons) > 0:
-            row = self.ctx.bot.rest.build_action_row()
+            row = self.context.bot.rest.build_action_row()
 
             for button in self.buttons.values():
                 b = row.add_button(button.style, button.custom_id)
@@ -255,7 +259,7 @@ class ComponentMenu:
 
         if len(self.button_groups) > 0:
             for buttons in self.button_groups.values():
-                row = self.ctx.bot.rest.build_action_row()
+                row = self.context.bot.rest.build_action_row()
                 for button in buttons:
                     b = row.add_button(button.style, button.custom_id)
                     b.set_label(button.label)
@@ -270,7 +274,7 @@ class ComponentMenu:
 
         if len(self.select_menus) > 0:
             for menu in self.select_menus.values():
-                row = self.ctx.bot.rest.build_action_row()
+                row = self.context.bot.rest.build_action_row()
 
                 m = row.add_select_menu(menu.custom_id)
                 m.set_placeholder(menu.placeholder)

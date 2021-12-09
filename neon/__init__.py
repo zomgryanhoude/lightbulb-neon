@@ -16,7 +16,7 @@
 # You should have received a copy of the GNU General Public License
 # along with Neon. If not, see <https://www.gnu.org/licenses/>.
 
-__all__ = ["ComponentMenu", "button", "button_group", "select_menu", "option", "on_timeout"]
+__all__ = ["ComponentMenu", "Button", "SelectMenuOption", "SelectMenu", "ButtonGroup", "TimeoutFunc", "button", "button_group", "select_menu", "option", "on_timeout"]
 
 from neon.neon import *
 
