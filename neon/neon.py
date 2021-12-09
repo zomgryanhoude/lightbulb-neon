@@ -16,7 +16,19 @@
 # You should have received a copy of the GNU General Public License
 # along with Neon. If not, see <https://www.gnu.org/licenses/>.
 
-__all__ = ["ComponentMenu", "Button", "SelectMenuOption", "SelectMenu", "ButtonGroup", "TimeoutFunc", "button", "button_group", "select_menu", "option", "on_timeout"]
+__all__ = [
+    "ComponentMenu",
+    "Button",
+    "SelectMenuOption",
+    "SelectMenu",
+    "ButtonGroup",
+    "TimeoutFunc",
+    "button",
+    "button_group",
+    "select_menu",
+    "option",
+    "on_timeout",
+]
 
 import asyncio
 import dataclasses
@@ -119,7 +131,18 @@ class ComponentMenu:
                 msg = await ctx.respond("Bar", components=menu.build())
                 await menu.run(msg)
     """
-    __slots__ = ("context", "timeout_length", "author_only", "buttons", "button_groups", "select_menus", "timeout_func", "msg", "inter")
+
+    __slots__ = (
+        "context",
+        "timeout_length",
+        "author_only",
+        "buttons",
+        "button_groups",
+        "select_menus",
+        "timeout_func",
+        "msg",
+        "inter",
+    )
 
     def __init__(
         self, context: lightbulb.Context, timeout: float = 60, author_only: bool = True
@@ -315,6 +338,7 @@ def button(
         emoji: The emoji of the button.
         is_disabled: Whether the button is disabled.
     """
+
     def decorate(func) -> t.Any:
         if isinstance(func, ButtonGroup):
             func.buttons.append(
@@ -332,6 +356,7 @@ def button_group():
     """
     Creates a group of buttons which is added to the message components.
     """
+
     def decorate(func):
         return ButtonGroup(func)
 
@@ -356,6 +381,7 @@ def select_menu(
         min_values: The minimum amount of options which must be chosen for this menu.
         max_values: The maximum amount of options which can be chosen for this menu.
     """
+
     def decorate(func) -> t.Any:
         return SelectMenu(
             func, custom_id, placeholder, is_disabled, min_values, max_values
@@ -382,6 +408,7 @@ def option(
         emoji: The emoji of the option.
         is_default: Whether the option is the default option.
     """
+
     def decorate(menu: SelectMenu):
         menu.options[custom_id] = SelectMenuOption(
             label, custom_id, description, emoji, is_default
@@ -398,6 +425,7 @@ def on_timeout(*, disable_components: bool = True):
     Args:
         disable_components: Whether to disable the components of the menu after the timeout.
     """
+
     def decorate(func):
         return TimeoutFunc(func, disable_components)
 
