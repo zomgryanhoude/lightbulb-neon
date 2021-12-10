@@ -4,6 +4,11 @@
 Getting Started
 ===============
 
+Before you start
+================
+
+* Make sure you're on the latest version of ``lightbulb-neon``.
+
 Basic Button Menu
 =================
 
@@ -23,10 +28,16 @@ This assumes ``bot`` is an instance of :obj:`lightbulb.BotApp`
     @lightbulb.implements(lightbulb.SlashCommand)
     async def fire_command(ctx: lightbulb.Context) -> None:
         menu = Menu(ctx)
-        msg = await ctx.respond("Bar", components=menu.build())
-        await menu.run(msg)
+        resp = await ctx.respond("Bar", components=menu.build())
+        await menu.run(resp)
 
 When the ``flames`` command is ran, it will produce a message with a red button, that says ``fire`` next to the 🔥 emoji.
+
+.. note::
+
+    * Buttons appear in the order they are defined.
+    * If you have more than 5 single (un-grouped) buttons, the first 5 will appear on the first row, the next 5 on the second row, and so on.
+    * You may have no more than 25 buttons per message.
 
 Retreiving the button instance
 ------------------------------
@@ -50,6 +61,11 @@ Grouping buttons
     async def wind_rock(self, button: neon.Button) -> None:
         await self.edit_msg(f"You chose: {button.custom_id}")
 
+.. note::
+
+    * You can have up to 5 buttons per group.
+    * You can only have 5 groups per menu, provided there are no other single buttons or select menus.
+
 Select Menus
 ============
 
@@ -60,6 +76,11 @@ Select Menus
     @neon.select_menu("select_menu", "Pick earth or water!")
     async def select_menu_test(self, values: list) -> None:
         await self.edit_msg(values[0])
+
+.. note::
+
+    * A select menu takes up a whole row. (The equivalent of 5 buttons or 1 button group).
+    * Select menus will always appear below the button rows. (This may be subject to change in the future).
 
 Timeouts
 ========
