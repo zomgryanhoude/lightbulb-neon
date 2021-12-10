@@ -295,7 +295,6 @@ class ComponentMenu:
                 if button is not None:
                     await group(button)
                     break
-                return
 
         elif self.inter.component_type == hikari.ComponentType.SELECT_MENU:
             menu = self.select_menus[cid]
