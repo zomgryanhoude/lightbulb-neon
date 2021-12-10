@@ -41,6 +41,16 @@ class Menu(neon.ComponentMenu):
 @lightbulb.implements(lightbulb.SlashCommand, lightbulb.PrefixCommand)
 async def neon_command(ctx: lightbulb.Context) -> None:
     menu = Menu(ctx, timeout=30)
-    msg = await ctx.respond("Bar", components=menu.build())
-    await menu.run(msg)
+    resp = await ctx.respond("Bar", components=menu.build())
+    await menu.run(resp)
 ```
+
+## Contributing
+
+If you wish to contribute to this project, please [open an issue](https://github.com/neonjonn/lightbulb-neon/issues/new) first to describe your issue or feature request. 
+
+As soon as you've done that you may make a pull request, and I'll review your changes.
+
+## Contributors
+
+* [thomm.o](https://github.com/tandemdude) - [Refactor, improve code, mypy compliance](https://github.com/neonjonn/lightbulb-neon/pull/1)
