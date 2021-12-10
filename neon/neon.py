@@ -15,6 +15,7 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with Neon. If not, see <https://www.gnu.org/licenses/>.
+from __future__ import annotations
 
 __all__ = [
     "ComponentMenu",
@@ -30,6 +31,7 @@ __all__ = [
     "on_timeout",
 ]
 
+import abc
 import asyncio
 import dataclasses
 import inspect
@@ -39,15 +41,46 @@ import hikari
 import lightbulb
 from hikari.interactions.component_interactions import ComponentInteraction
 
+CallbackT = t.TypeVar(
+    "CallbackT", bound=t.Callable[..., t.Coroutine[t.Any, t.Any, None]]
+)
+
 
 @dataclasses.dataclass
-class Button:
-    callback: t.Callable
+class _BindableObjectMixin(abc.ABC):
+    callback: t.Callable[..., t.Coroutine[t.Any, t.Any, None]]
+    _bound_to: t.Optional[ComponentMenu] = dataclasses.field(init=False, default=None)
+
+    def __call__(
+        self, *args: t.Any, **kwargs: t.Any
+    ) -> t.Coroutine[t.Any, t.Any, None]:
+        assert self._bound_to is not None
+        return self.callback(self._bound_to, *args, **kwargs)
+
+    def __get__(
+        self, instance: ComponentMenu, _: t.Type[ComponentMenu]
+    ) -> _BindableObjectMixin:
+        self._bound_to = instance
+        return self
+
+
+@dataclasses.dataclass
+class Button(_BindableObjectMixin):
     label: str
     custom_id: str
     style: t.Union[int, hikari.ButtonStyle]
     emoji: t.Union[hikari.Snowflakeish, hikari.Emoji, str, None]
     is_disabled: bool
+
+    def build_for(
+        self, row: hikari.api.ActionRowBuilder, disabled: bool = False
+    ) -> None:
+        b = row.add_button(self.style, self.custom_id)  # type: ignore
+        b.set_label(self.label)
+        if self.emoji is not None:
+            b.set_emoji(self.emoji)
+        b.set_is_disabled(disabled or self.is_disabled)
+        b.add_to_container()
 
 
 @dataclasses.dataclass
@@ -58,10 +91,19 @@ class SelectMenuOption:
     emoji: t.Union[hikari.Snowflakeish, hikari.Emoji, str, None]
     is_default: bool
 
+    def build_for(
+        self, menu: hikari.api.SelectMenuBuilder[hikari.api.ActionRowBuilder]
+    ) -> None:
+        o = menu.add_option(self.label, self.custom_id)
+        o.set_description(self.description)
+        if self.emoji is not None:
+            o.set_emoji(self.emoji)
+        o.set_is_default(self.is_default)
+        o.add_to_menu()
+
 
 @dataclasses.dataclass
-class SelectMenu:
-    callback: t.Callable
+class SelectMenu(_BindableObjectMixin):
     custom_id: str
     placeholder: str
     is_disabled: bool
@@ -72,20 +114,31 @@ class SelectMenu:
         default_factory=dict
     )
 
+    def build_for(
+        self, row: hikari.api.ActionRowBuilder, disabled: bool = False
+    ) -> None:
+        m = row.add_select_menu(self.custom_id)
+        m.set_placeholder(self.placeholder)
+        m.set_min_values(self.min_values)
+        m.set_max_values(self.max_values)
+        m.set_is_disabled(disabled or self.is_disabled)
+
+        for opt in self.options.values():
+            opt.build_for(m)
+
+        m.add_to_container()
+
 
 @dataclasses.dataclass
-class ButtonGroup:
-    callback: t.Callable
+class ButtonGroup(_BindableObjectMixin):
+    buttons: t.MutableMapping[str, Button] = dataclasses.field(default_factory=dict)
 
-    buttons: t.List[Button] = dataclasses.field(default_factory=list)
-
-    def __hash__(self):
-        return hash(self.callback.__name__)
+    def __hash__(self) -> int:
+        return hash(getattr(self.callback, "__name__"))
 
 
 @dataclasses.dataclass
-class TimeoutFunc:
-    callback: t.Callable
+class TimeoutFunc(_BindableObjectMixin):
     disable_components: bool
 
 
@@ -94,9 +147,9 @@ class ComponentMenu:
     Base class for making a ``ComponentMenu``.
 
     Args:
-        context: The :obj:`lightbulb.Context` to use.
-        timeout: The timeout length in seconds.
-        author_only: Whether or not the menu can only be used by the user who ran the command.
+        context (:obj:`lightbulb.Context`): The :obj:`lightbulb.Context` to use.
+        timeout (:obj:`float`): The timeout length in seconds.
+        author_only (:obj:`bool`): Whether the menu can only be used by the user who ran the command.
 
     Example:
 
@@ -140,8 +193,8 @@ class ComponentMenu:
         "button_groups",
         "select_menus",
         "timeout_func",
-        "msg",
-        "inter",
+        "_msg",
+        "_inter",
     )
 
     def __init__(
@@ -152,46 +205,57 @@ class ComponentMenu:
         self.author_only = author_only
 
         self.buttons: t.MutableMapping[str, Button] = {}
-        self.button_groups: t.MutableMapping[ButtonGroup, t.List[Button]] = {}
+        self.button_groups: t.MutableMapping[
+            ButtonGroup, t.MutableMapping[str, Button]
+        ] = {}
         self.select_menus: t.MutableMapping[str, SelectMenu] = {}
-        self.timeout_func: t.Union[TimeoutFunc, None] = None
+        self.timeout_func: t.Optional[TimeoutFunc] = None
 
-        self.msg: t.Union[hikari.Message, None] = None
-        self.inter: t.Union[ComponentInteraction, None] = None
+        self._msg: t.Optional[hikari.Message] = None
+        self._inter: t.Optional[ComponentInteraction] = None
 
-    def build(self) -> hikari.api.ActionRowBuilder:
+    @property
+    def msg(self) -> hikari.Message:
+        if self._msg is None:
+            raise RuntimeError("Attribute '_msg' was None at runtime")
+        return self._msg
+
+    @property
+    def inter(self) -> hikari.ComponentInteraction:
+        if self._inter is None:
+            raise RuntimeError("Attribute '_inter' was None at runtime")
+        return self._inter
+
+    def build(self) -> t.List[hikari.api.ActionRowBuilder]:
         """
         Builds the :obj:`ComponentMenu` components.
 
         Returns:
             List[:obj:`hikari.api.ActionRowBuilder`]
         """
-        for val in self.__class__.__dict__.values():
-            if isinstance(val, Button):
-                val.callback = val.callback.__get__(self)
-                self.buttons[val.custom_id] = val
+        for item in dir(self):
+            if item in ["inter", "msg"]:
+                continue
+            obj = getattr(self, item)
 
-            if isinstance(val, SelectMenu):
-                val.callback = val.callback.__get__(self)
-                self.select_menus[val.custom_id] = val
-
-            if isinstance(val, ButtonGroup):
-                val.callback = val.callback.__get__(self)
-                self.button_groups[val] = val.buttons
-
-            if isinstance(val, TimeoutFunc):
-                val.callback = val.callback.__get__(self)
-                self.timeout_func = val
+            if isinstance(obj, Button):
+                self.buttons[obj.custom_id] = obj
+            elif isinstance(obj, SelectMenu):
+                self.select_menus[obj.custom_id] = obj
+            elif isinstance(obj, ButtonGroup):
+                self.button_groups[obj] = obj.buttons
+            elif isinstance(obj, TimeoutFunc):
+                self.timeout_func = obj
 
         return self.build_components()
 
-    async def edit_msg(self, *args, **kwargs) -> None:
+    async def edit_msg(self, *args: t.Any, **kwargs: t.Any) -> None:
         """
         Edit the :obj:`ComponentMenu` message.
 
         Anything you can pass to :obj:`hikari.messages.PartialMessage.edit` can be passed here.
         """
-        if self.inter is not None:
+        if self._inter is not None:
             try:
                 await self.inter.create_initial_response(
                     hikari.ResponseType.MESSAGE_UPDATE,
@@ -206,11 +270,42 @@ class ComponentMenu:
         else:
             await self.msg.edit(*args, **kwargs)
 
-    async def run(self, message: lightbulb.ResponseProxy) -> None:
+    async def process_interaction_create(
+        self, event: hikari.InteractionCreateEvent
+    ) -> None:
+        assert isinstance(event.interaction, hikari.ComponentInteraction)
+        self._inter = event.interaction
+
+        if self.author_only and self.inter.user.id != self.context.user.id:
+            return
+
+        cid = self.inter.custom_id
+
+        if self.inter.component_type == hikari.ComponentType.BUTTON:
+            button = self.buttons.get(cid)
+            if button is not None:
+                if len(inspect.signature(button.callback).parameters) > 1:
+                    await button(button)
+                else:
+                    await button()
+                return
+
+            for group in self.button_groups:
+                button = group.buttons.get(cid)
+                if button is not None:
+                    await group(button)
+                    break
+                return
+
+        elif self.inter.component_type == hikari.ComponentType.SELECT_MENU:
+            menu = self.select_menus[cid]
+            await menu(self.inter.values)
+
+    async def run(self, resp: lightbulb.ResponseProxy) -> None:
         """
         Run the :obj:`ComponentMenu` using the given message.
         """
-        self.msg = await message.message()
+        self._msg = await resp.message()
         while True:
             try:
                 assert self.msg is not None
@@ -226,95 +321,43 @@ class ComponentMenu:
                 await self.timeout_job(self.timeout_func)
                 break
             else:
-                self.inter = event.interaction
+                await self.process_interaction_create(event)
 
-                if self.author_only and self.inter.user.id != self.context.user.id:
-                    return
-
-                cid = self.inter.custom_id
-
-                if self.inter.component_type == hikari.ComponentType.BUTTON:
-                    if cid in self.buttons.keys():
-                        button = self.buttons[cid]
-                        if len(inspect.signature(button.callback).parameters) >= 1:
-                            await button.callback(button)
-                        else:
-                            await button.callback()
-
-                    for group, buttons in self.button_groups.items():
-                        for button in buttons:
-                            if cid == button.custom_id:
-                                await group.callback(button)
-                                break
-
-                elif self.inter.component_type == hikari.ComponentType.SELECT_MENU:
-                    menu = self.select_menus[cid]
-                    await menu.callback(self.inter.values)
-
-    async def timeout_job(self, timeout_func: TimeoutFunc):
+    async def timeout_job(self, timeout_func: t.Optional[TimeoutFunc]) -> None:
         if timeout_func is not None:
-            await timeout_func.callback()
-            if timeout_func.disable_components == True:
-                components = self.build_components(disabled=True)
-                await self.edit_msg(components=components)
+            await timeout_func()
 
-        else:
+        if timeout_func is None or timeout_func.disable_components:
             components = self.build_components(disabled=True)
             await self.edit_msg(components=components)
 
     def build_components(
-        self, *, disabled: t.Optional[bool] = False
+        self, *, disabled: bool = False
     ) -> t.List[hikari.api.ActionRowBuilder]:
         rows = []
 
         if len(self.buttons) > 0:
-            row = self.context.bot.rest.build_action_row()
+            buttons = list(self.buttons.values())
+            chunked = [buttons[i : i + 5] for i in range(0, len(buttons), 5)]
 
-            for button in self.buttons.values():
-                b = row.add_button(button.style, button.custom_id)
-                b.set_label(button.label)
-                if button.emoji is not None:
-                    b.set_emoji(button.emoji)
-                b.set_is_disabled(disabled if disabled is True else button.is_disabled)
-                b.add_to_container()
-
-            rows.append(row)
+            for chunk in chunked:
+                row = self.context.bot.rest.build_action_row()
+                for btn in chunk:
+                    btn.build_for(row, disabled)
+                rows.append(row)
 
         if len(self.button_groups) > 0:
-            for buttons in self.button_groups.values():
+            # TODO - should button groups be limited to only 5 buttons?
+            for group_buttons in self.button_groups.values():
                 row = self.context.bot.rest.build_action_row()
-                for button in buttons:
-                    b = row.add_button(button.style, button.custom_id)
-                    b.set_label(button.label)
-                    if button.emoji is not None:
-                        b.set_emoji(button.emoji)
-                    b.set_is_disabled(
-                        disabled if disabled is True else button.is_disabled
-                    )
-                    b.add_to_container()
-
+                for btn in group_buttons.values():
+                    btn.build_for(row, disabled)
                 rows.append(row)
 
         if len(self.select_menus) > 0:
             for menu in self.select_menus.values():
                 row = self.context.bot.rest.build_action_row()
-
-                m = row.add_select_menu(menu.custom_id)
-                m.set_placeholder(menu.placeholder)
-                m.set_min_values(menu.min_values)
-                m.set_max_values(menu.max_values)
-                m.set_is_disabled(disabled if disabled is True else menu.is_disabled)
-
-                for opt in menu.options.values():
-                    o = m.add_option(opt.label, opt.custom_id)
-                    o.set_description(opt.description)
-                    if opt.emoji is not None:
-                        o.set_emoji(opt.emoji)
-                    o.set_is_default(opt.is_default)
-                    o.add_to_menu()
-
-                m.add_to_container()
-
+                menu.build_for(row, disabled)
                 rows.append(row)
 
         return rows
@@ -327,24 +370,22 @@ def button(
     *,
     emoji: t.Union[hikari.Snowflakeish, hikari.Emoji, str, None] = None,
     is_disabled: bool = False,
-) -> t.Any:
+) -> t.Callable[[t.Union[CallbackT, ButtonGroup]], t.Union[Button, ButtonGroup]]:
     """
     Creates a :obj:`hikari.messages.ButtonComponent` which is added to the message components.
 
     Args:
-        label: The label of the button.
-        url_or_custom_id: The URL (if the button style is of :obj:`hikari.messages.ButtonStyle.LINK`), or custom ID of the button.
+        label (:obj:`str`): The label of the button.
+        url_or_custom_id (:obj:`str`): The URL (if the button style is of :obj:`hikari.messages.ButtonStyle.LINK`), or custom ID of the button.
         style: The style of the button.
         emoji: The emoji of the button.
-        is_disabled: Whether the button is disabled.
+        is_disabled (:obj:`bool`): Whether the button is disabled.
     """
 
-    def decorate(func) -> t.Any:
+    def decorate(func: t.Union[CallbackT, ButtonGroup]) -> t.Union[Button, ButtonGroup]:
         if isinstance(func, ButtonGroup):
-            func.buttons.append(
-                Button(
-                    func.callback, label, url_or_custom_id, style, emoji, is_disabled
-                )
+            func.buttons[url_or_custom_id] = Button(
+                func.callback, label, url_or_custom_id, style, emoji, is_disabled
             )
             return func
         return Button(func, label, url_or_custom_id, style, emoji, is_disabled)
@@ -352,12 +393,12 @@ def button(
     return decorate
 
 
-def button_group():
+def button_group() -> t.Callable[[CallbackT], ButtonGroup]:
     """
     Creates a group of buttons which is added to the message components.
     """
 
-    def decorate(func):
+    def decorate(func: CallbackT) -> ButtonGroup:
         return ButtonGroup(func)
 
     return decorate
@@ -370,7 +411,7 @@ def select_menu(
     is_disabled: bool = False,
     min_values: int = 1,
     max_values: int = 1,
-) -> t.Any:
+) -> t.Callable[[CallbackT], SelectMenu]:
     """
     Creates a :obj:`hikari.messages.SelectMenuComponent` which is added to the message components.
 
@@ -382,7 +423,7 @@ def select_menu(
         max_values: The maximum amount of options which can be chosen for this menu.
     """
 
-    def decorate(func) -> t.Any:
+    def decorate(func: CallbackT) -> SelectMenu:
         return SelectMenu(
             func, custom_id, placeholder, is_disabled, min_values, max_values
         )
@@ -397,7 +438,7 @@ def option(
     *,
     emoji: t.Union[hikari.Snowflakeish, hikari.Emoji, str, None] = None,
     is_default: bool = False,
-):
+) -> t.Callable[[SelectMenu], SelectMenu]:
     """
     Creates a :obj:`hikari.messages.SelectMenuOption` which is added to the select menu options.
 
@@ -409,7 +450,7 @@ def option(
         is_default: Whether the option is the default option.
     """
 
-    def decorate(menu: SelectMenu):
+    def decorate(menu: SelectMenu) -> SelectMenu:
         menu.options[custom_id] = SelectMenuOption(
             label, custom_id, description, emoji, is_default
         )
@@ -418,7 +459,9 @@ def option(
     return decorate
 
 
-def on_timeout(*, disable_components: bool = True):
+def on_timeout(
+    *, disable_components: bool = True
+) -> t.Callable[[CallbackT], TimeoutFunc]:
     """
     Set the timeout function for the menu.
 
@@ -426,7 +469,7 @@ def on_timeout(*, disable_components: bool = True):
         disable_components: Whether to disable the components of the menu after the timeout.
     """
 
-    def decorate(func):
+    def decorate(func: CallbackT) -> TimeoutFunc:
         return TimeoutFunc(func, disable_components)
 
     return decorate
