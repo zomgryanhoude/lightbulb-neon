@@ -181,8 +181,8 @@ class ComponentMenu:
             @lightbulb.implements(lightbulb.SlashCommand, lightbulb.PrefixCommand)
             async def neon_command(ctx: lightbulb.Context) -> None:
                 menu = Menu(ctx, timeout=30)
-                msg = await ctx.respond("Bar", components=menu.build())
-                await menu.run(msg)
+                resp = await ctx.respond("Bar", components=menu.build())
+                await menu.run(resp)
     """
 
     __slots__ = (
@@ -233,7 +233,7 @@ class ComponentMenu:
         Returns:
             List[:obj:`hikari.api.ActionRowBuilder`]
         """
-        for item in dir(self):
+        for item in self.__class__.__dict__.keys():
             if item in ["inter", "msg"]:
                 continue
             obj = getattr(self, item)
