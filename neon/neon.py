@@ -334,7 +334,13 @@ class ComponentMenu:
         self, *, disabled: bool = False
     ) -> t.List[hikari.api.ActionRowBuilder]:
         rows = []
-
+        
+        if len(self.select_menus) > 0:
+            for menu in self.select_menus.values():
+                row = self.context.bot.rest.build_action_row()
+                menu.build_for(row, disabled)
+                rows.append(row)
+                
         if len(self.buttons) > 0:
             buttons = list(self.buttons.values())
             chunked = [buttons[i : i + 5] for i in range(0, len(buttons), 5)]
@@ -351,12 +357,6 @@ class ComponentMenu:
                 row = self.context.bot.rest.build_action_row()
                 for btn in group_buttons.values():
                     btn.build_for(row, disabled)
-                rows.append(row)
-
-        if len(self.select_menus) > 0:
-            for menu in self.select_menus.values():
-                row = self.context.bot.rest.build_action_row()
-                menu.build_for(row, disabled)
                 rows.append(row)
 
         return rows
@@ -431,12 +431,7 @@ def select_menu(
 
 
 def option(
-    label: str,
-    custom_id: str,
-    description: str = "",
-    *,
-    emoji: t.Union[hikari.Snowflakeish, hikari.Emoji, str, None] = None,
-    is_default: bool = False,
+    oplist: []
 ) -> t.Callable[[SelectMenu], SelectMenu]:
     """
     Creates a :obj:`hikari.messages.SelectMenuOption` which is added to the select menu options.
@@ -448,11 +443,12 @@ def option(
         emoji: The emoji of the option.
         is_default: Whether the option is the default option.
     """
-
+    
     def decorate(menu: SelectMenu) -> SelectMenu:
-        menu.options[custom_id] = SelectMenuOption(
-            label, custom_id, description, emoji, is_default
-        )
+        for option in oplist:
+            menu.options[option['custom_id']] = SelectMenuOption(
+                option['label'], option['custom_id'], option['description'], None, option['is_default']
+            )
         return menu
 
     return decorate
